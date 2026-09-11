@@ -36,4 +36,4 @@ Feel free to customize and use this portfolio template for your own projects.
 
 ---
 
-**Built with ❤️ using Next.js**
+**Built with ❤️**
