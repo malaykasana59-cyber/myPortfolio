@@ -67,16 +67,66 @@ export function ContactSection() {
     setIsSubmitting(true);
 
     try {
-      const response = await fetch("/api/contact", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
-      });
+      let isDelivered = false;
+      let deliveryMessage = "";
 
-      const result = await response.json();
+      // 1. Primary path: Next.js internal API route (handles server validation, honeypot, rate limiting)
+      try {
+        const response = await fetch("/api/contact", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(data),
+        });
 
-      if (response.ok && result.success) {
-        toast.success(result.message || "Thank you! Your message was sent.");
+        const contentType = response.headers.get("content-type") || "";
+        const result = contentType.includes("application/json")
+          ? await response.json().catch(() => null)
+          : null;
+
+        if (response.ok && result?.success) {
+          isDelivered = true;
+          deliveryMessage = result.message || "Thank you! Your message was sent.";
+        }
+      } catch (err) {
+        console.warn("Internal API route submission failed, attempting direct client fallback:", err);
+      }
+
+      // 2. Client-side fallback: Direct Web3Forms submission if server route was blocked
+      const clientAccessKey = process.env.NEXT_PUBLIC_WEB3FORMS_ACCESS_KEY;
+      if (!isDelivered && clientAccessKey && clientAccessKey !== "your_web3forms_access_key_here") {
+        try {
+          const directResponse = await fetch("https://api.web3forms.com/submit", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Accept: "application/json",
+            },
+            body: JSON.stringify({
+              access_key: clientAccessKey,
+              name: data.name,
+              email: data.email,
+              subject: `[Portfolio Contact] ${data.subject}`,
+              message: data.message,
+              from_name: data.name,
+            }),
+          });
+
+          const directContentType = directResponse.headers.get("content-type") || "";
+          const directResult = directContentType.includes("application/json")
+            ? await directResponse.json().catch(() => null)
+            : null;
+
+          if (directResponse.ok && directResult?.success) {
+            isDelivered = true;
+            deliveryMessage = "Thank you! Your message was sent successfully.";
+          }
+        } catch (directErr) {
+          console.error("Direct Web3Forms fallback error:", directErr);
+        }
+      }
+
+      if (isDelivered) {
+        toast.success(deliveryMessage || "Thank you! Your message was sent.");
         reset();
         setSelectedSubject("");
 
@@ -91,7 +141,7 @@ export function ContactSection() {
           // ignore if canvas unsupported
         }
       } else {
-        toast.error(result.message || "Failed to send message. Please try again.");
+        toast.error("Unable to deliver message right now. Please reach out via direct email.");
       }
     } catch (error) {
       console.error("Submission error:", error);
@@ -287,13 +337,15 @@ export function ContactSection() {
                     id="name"
                     type="text"
                     placeholder="e.g. Alex Rivera"
+                    aria-invalid={!!errors.name}
+                    aria-describedby={errors.name ? "name-error" : undefined}
                     {...register("name")}
                     className={`w-full px-4 py-2.5 rounded-xl border bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 transition-[border-color,box-shadow] min-h-[42px] ${
                       errors.name ? "border-red-500 ring-1 ring-red-500" : "border-border"
                     }`}
                   />
                   {errors.name && (
-                    <p className="text-xs text-red-500 flex items-center gap-1 mt-1">
+                    <p id="name-error" role="alert" className="text-xs text-red-500 flex items-center gap-1 mt-1">
                       <AlertCircle className="w-3.5 h-3.5" />
                       <span>{errors.name.message}</span>
                     </p>
@@ -312,13 +364,15 @@ export function ContactSection() {
                     id="email"
                     type="email"
                     placeholder="e.g. alex@example.com"
+                    aria-invalid={!!errors.email}
+                    aria-describedby={errors.email ? "email-error" : undefined}
                     {...register("email")}
                     className={`w-full px-4 py-2.5 rounded-xl border bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 transition-[border-color,box-shadow] min-h-[42px] ${
                       errors.email ? "border-red-500 ring-1 ring-red-500" : "border-border"
                     }`}
                   />
                   {errors.email && (
-                    <p className="text-xs text-red-500 flex items-center gap-1 mt-1">
+                    <p id="email-error" role="alert" className="text-xs text-red-500 flex items-center gap-1 mt-1">
                       <AlertCircle className="w-3.5 h-3.5" />
                       <span>{errors.email.message}</span>
                     </p>
@@ -338,13 +392,15 @@ export function ContactSection() {
                   id="subject"
                   type="text"
                   placeholder="e.g. Software Engineering Opportunity / DTU Candidate"
+                  aria-invalid={!!errors.subject}
+                  aria-describedby={errors.subject ? "subject-error" : undefined}
                   {...register("subject")}
                   className={`w-full px-4 py-2.5 rounded-xl border bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 transition-[border-color,box-shadow] min-h-[42px] ${
                     errors.subject ? "border-red-500 ring-1 ring-red-500" : "border-border"
                   }`}
                 />
                 {errors.subject && (
-                  <p className="text-xs text-red-500 flex items-center gap-1 mt-1">
+                  <p id="subject-error" role="alert" className="text-xs text-red-500 flex items-center gap-1 mt-1">
                     <AlertCircle className="w-3.5 h-3.5" />
                     <span>{errors.subject.message}</span>
                   </p>
@@ -363,13 +419,15 @@ export function ContactSection() {
                   id="message"
                   rows={4}
                   placeholder="Share details about your timeline, role scope, or tech stacks..."
+                  aria-invalid={!!errors.message}
+                  aria-describedby={errors.message ? "message-error" : undefined}
                   {...register("message")}
                   className={`w-full px-4 py-2.5 rounded-xl border bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 transition-[border-color,box-shadow] resize-none ${
                     errors.message ? "border-red-500 ring-1 ring-red-500" : "border-border"
                   }`}
                 />
                 {errors.message && (
-                  <p className="text-xs text-red-500 flex items-center gap-1 mt-1">
+                  <p id="message-error" role="alert" className="text-xs text-red-500 flex items-center gap-1 mt-1">
                     <AlertCircle className="w-3.5 h-3.5" />
                     <span>{errors.message.message}</span>
                   </p>
